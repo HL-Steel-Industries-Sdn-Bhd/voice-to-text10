@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+  <title>语音转文字 · 写入 Google Sheet</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: linear-gradient(145deg, #f5f2eb 0%, #e6dfd6 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Segoe UI', Roboto, system-ui, sans-serif;
+      padding: 16px;
+    }
+    .card {
+      max-width: 650px;
+      width: 100%;
+      background: rgba(255, 250, 240, 0.9);
+      border-radius: 40px;
+      padding: 32px 28px;
+      box-shadow: 0 20px 40px rgba(40,30,20,0.12);
+      border: 1px solid rgba(255,245,225,0.6);
+    }
+    h1 { font-size: 1.6rem; color: #3d2c1e; margin-bottom: 4px; }
+    .sub { color: #6b4f32; font-size: 0.9rem; margin-bottom: 24px; border-left: 4px solid #b38b5b; padding-left: 14px; background: rgba(179,139,91,0.08); line-height: 1.6; }
+    .mic-area { display: flex; flex-direction: column; align-items: center; margin: 10px 0 18px 0; }
+    .mic-btn {
+      background: #8b6f4a;
+      border: none;
+      color: white;
+      font-size: 3rem;
+      width: 120px;
+      height: 120px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 12px 28px -6px rgba(80,60,40,0.4);
+      transition: all 0.2s;
+      cursor: pointer;
+      background: radial-gradient(circle at 30% 30%, #b38b5b, #6b4f32);
+      border: 2px solid rgba(255,240,210,0.3);
+      user-select: none;
+    }
+    .mic-btn:active { transform: scale(0.92); }
+    .mic-btn.listening {
+      background: radial-gradient(circle at 30% 30%, #c05a4a, #8a3d30);
+      box-shadow: 0 0 0 10px rgba(180,70,50,0.15);
+      animation: pulse 1.2s infinite;
+      border-color: #f5b7a8;
+    }
+    .mic-btn:disabled { opacity: 0.5; cursor: not-allowed; background: #a08a74; animation: none; }
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(180,70,50,0.2); }
+      100% { box-shadow: 0 0 0 20px rgba(180,70,50,0); }
+    }
+    .status-badge {
+      margin-top: 16px;
+      font-size: 0.95rem;
+      background: rgba(40,30,20,0.04);
+      padding: 8px 24px;
+      border-radius: 40px;
+      color: #4d3824;
+      font-weight: 500;
+      border: 1px solid rgba(130,100,70,0.12);
+      min-height: 2.6em;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      width: 100%;
+    }
+    .dot {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #8b6f4a;
+      flex-shrink: 0;
+      transition: 0.2s;
+    }
+    .dot.recording { background: #c05a4a; animation: blink 0.7s infinite; }
+    .dot.success { background: #4caf50; }
+    .dot.error { background: #d32f2f; }
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.2; }
+    }
+    .text-output {
+      background: #fcf9f2;
+      border-radius: 24px;
+      padding: 20px 24px;
+      margin: 18px 0 14px 0;
+      min-height: 130px;
+      box-shadow: inset 0 4px 10px rgba(40,30,20,0.02);
+      border: 1px solid rgba(240,225,205,0.8);
+    }
+    .text-output .label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1.5px; color: #a08870; font-weight: 600; margin-bottom: 6px; }
+    .text-output .result { font-size: 1.2rem; line-height: 1.8; color: #2d2016; word-break: break-word; white-space: pre-wrap; min-height: 2.2em; }
+    .text-output .result .empty { color: #b8a692; font-style: italic; font-weight: 300; }
+    .text-output .char-count { font-size: 0.75rem; color: #b8a692; text-align: right; margin-top: 10px; border-top: 1px solid #ede4d8; padding-top: 10px; }
+    .action-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
+    .btn {
+      padding: 10px 24px;
+      border-radius: 40px;
+      font-weight: 600;
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: 0.15s;
+      border: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .btn:active { transform: scale(0.96); }
+    .btn-primary { background: #8b6f4a; color: white; }
+    .btn-primary:hover { background: #a5845a; }
+    .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-outline { background: transparent; color: #5a4330; border: 1px solid #d4c0a8; }
+    .btn-outline:hover { background: #ede4d8; }
+    .footer {
+      margin-top: 20px;
+      font-size: 0.75rem;
+      color: #a08870;
+      text-align: center;
+      border-top: 1px solid #ede4d8;
+      padding-top: 16px;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 8px 16px;
+    }
+    .footer span { background: rgba(180,150,120,0.08); padding: 2px 14px; border-radius: 30px; }
+    #hiddenIframe { display: none; }
+    .sheet-status {
+      margin-top: 12px;
+      padding: 10px 16px;
+      border-radius: 12px;
+      background: #e8f0fe;
+      border-left: 4px solid #1a73e8;
+      font-size: 0.85rem;
+      color: #1a3a5c;
+    }
+    .sheet-status .label { font-weight: 600; }
+    .sheet-status .status-ok { color: #1e7e34; }
+    .sheet-status .status-error { color: #d32f2f; }
+    @media (max-width: 480px) {
+      .card { padding: 20px 16px; }
+      h1 { font-size: 1.3rem; }
+      .mic-btn { width: 90px; height: 90px; font-size: 2.4rem; }
+      .text-output .result { font-size: 1rem; }
+      .btn { padding: 8px 16px; font-size: 0.8rem; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="card">
+  <h1>🎙️ 语音转文字</h1>
+  <div class="sub">🇨🇳 中文 · 🇺🇸 英文 · 🇲🇾 马来文 — 自动写入 Google Sheet</div>
+
+  <!-- form + iframe 绕过 CORS -->
+  <form id="uploadForm" action="" method="POST" target="hiddenIframe" enctype="application/x-www-form-urlencoded">
+    <input type="hidden" name="audio" id="audioField">
+    <input type="hidden" name="format" id="formatField" value="webm">
+  </form>
+  <iframe name="hiddenIframe" id="hiddenIframe" onload="handleIframeResponse()"></iframe>
+
+  <div class="mic-area">
+    <button class="mic-btn" id="micButton">🎤</button>
+    <div class="status-badge" id="statusDisplay">
+      <span class="dot" id="statusDot"></span>
+      <span id="statusText">点击麦克风开始说话</span>
+    </div>
+  </div>
+
+  <div class="text-output">
+    <div class="label">📝 识别结果</div>
+    <div class="result" id="resultDisplay"><span class="empty">等待识别…</span></div>
+    <div class="char-count" id="charCount">0 字符</div>
+  </div>
+
+  <div class="action-row">
+    <button class="btn btn-primary" id="copyBtn">📋 复制结果</button>
+    <button class="btn btn-outline" id="clearBtn">🗑️ 清空</button>
+  </div>
+
+  <!-- Google Sheet 状态 -->
+  <div class="sheet-status" id="sheetStatus">
+    <span class="label">📊 Google Sheet:</span>
+    <span id="sheetStatusText">等待写入...</span>
+  </div>
+
+  <div class="footer">
+    <span>🎤 点击录音 · 再点击停止</span>
+    <span>📊 自动写入 Sheet</span>
+  </div>
+</div>
+
+<script>
+  (function() {
+    "use strict";
+
+    // ============================================================
+    // ⚙️ 配置区域
+    // ============================================================
+    const GAS_URL = 'https://script.google.com/macros/s/AKfycbxbeVcAlypYAgvMeBH-tC5mvCPXBOAqWCn-hhF1wMPGydfPcZ4AtxJONbjSNXkh5rBp/exec';  // 替换为你的 GAS URL
+    // ============================================================
+
+    // --- DOM 引用 ---
+    const micBtn = document.getElementById('micButton');
+    const statusText = document.getElementById('statusText');
+    const statusDot = document.getElementById('statusDot');
+    const resultDisplay = document.getElementById('resultDisplay');
+    const charCount = document.getElementById('charCount');
+    const copyBtn = document.getElementById('copyBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const audioField = document.getElementById('audioField');
+    const formatField = document.getElementById('formatField');
+    const form = document.getElementById('uploadForm');
+    const sheetStatusText = document.getElementById('sheetStatusText');
+
+    // --- 状态 ---
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let isRecording = false;
+    let finalText = '';
+    let isProcessing = false;
+
+    // --- 更新 Sheet 状态 ---
+    function updateSheetStatus(text, isError = false) {
+      sheetStatusText.textContent = text;
+      sheetStatusText.className = isError ? 'status-error' : 'status-ok';
+    }
+
+    // --- UI 更新 ---
+    function setStatus(text, type) {
+      statusText.textContent = text;
+      statusDot.className = 'dot';
+      if (type === 'recording') statusDot.classList.add('recording');
+      else if (type === 'success') statusDot.classList.add('success');
+      else if (type === 'error') statusDot.classList.add('error');
+    }
+
+    function updateResult() {
+      if (finalText.trim() === '') {
+        resultDisplay.innerHTML = '<span class="empty">等待识别…</span>';
+        charCount.textContent = '0 字符';
+      } else {
+        resultDisplay.innerHTML = finalText;
+        charCount.textContent = finalText.trim().length + ' 字符';
+      }
+    }
+
+    // --- iframe 回调 ---
+    window.handleIframeResponse = function() {
+      try {
+        const iframe = document.getElementById('hiddenIframe');
+        const content = iframe.contentDocument || iframe.contentWindow.document;
+        const bodyText = content.body ? content.body.innerText : '';
+
+        if (!bodyText || bodyText.trim() === '') {
+          return;
+        }
+
+        const result = JSON.parse(bodyText);
+
+        if (result.error) {
+          setStatus('❌ ' + result.error, 'error');
+          updateSheetStatus('❌ ' + result.error, true);
+        } else if (result.text) {
+          finalText = result.text.trim();
+          updateResult();
+          setStatus('✅ 识别完成！', 'success');
+          updateSheetStatus('✅ 已写入 Google Sheet (Row ' + (result.row || '?') + ')');
+        } else {
+          setStatus('⚠️ 没有识别到文字', 'error');
+          updateSheetStatus('⚠️ 没有识别到文字', true);
+        }
+      } catch (e) {
+        console.error('解析响应出错:', e);
+      } finally {
+        isProcessing = false;
+        micBtn.disabled = false;
+        micBtn.classList.remove('listening');
+        micBtn.textContent = '🎤';
+      }
+    };
+
+    // --- 录音 ---
+    async function startRecording() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+        audioChunks = [];
+
+        mediaRecorder.ondataavailable = function(event) {
+          if (event.data.size > 0) audioChunks.push(event.data);
+        };
+
+        mediaRecorder.onstop = function() {
+          stream.getTracks().forEach(track => track.stop());
+          const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+          if (audioBlob.size > 0) {
+            sendAudioViaForm(audioBlob);
+          } else {
+            setStatus('⚠️ 录音为空', 'error');
+            isProcessing = false;
+            micBtn.disabled = false;
+            micBtn.classList.remove('listening');
+            micBtn.textContent = '🎤';
+          }
+        };
+
+        mediaRecorder.start();
+        isRecording = true;
+        micBtn.classList.add('listening');
+        micBtn.textContent = '⏹️';
+        setStatus('🎙️ 正在录音… 点击停止', 'recording');
+        updateSheetStatus('⏳ 录音中...');
+      } catch (error) {
+        setStatus('❌ 无法访问麦克风', 'error');
+        alert('请授权麦克风权限');
+      }
+    }
+
+    function stopRecording() {
+      if (mediaRecorder && isRecording) {
+        isRecording = false;
+        isProcessing = true;
+        micBtn.disabled = true;
+        setStatus('⏳ 正在识别…', '');
+        updateSheetStatus('⏳ 正在识别...');
+        mediaRecorder.stop();
+      }
+    }
+
+    // --- 通过 form 提交 ---
+    async function sendAudioViaForm(audioBlob) {
+      try {
+        const arrayBuffer = await audioBlob.arrayBuffer();
+        const bytes = new Uint8Array(arrayBuffer);
+        let binary = '';
+        for (let i = 0; i < bytes.length; i++) {
+          binary += String.fromCharCode(bytes[i]);
+        }
+        const base64 = btoa(binary);
+
+        audioField.value = base64;
+        formatField.value = 'webm';
+        form.submit();
+      } catch (error) {
+        console.error('提交失败:', error);
+        setStatus('❌ 提交失败', 'error');
+        updateSheetStatus('❌ 提交失败', true);
+        isProcessing = false;
+        micBtn.disabled = false;
+        micBtn.classList.remove('listening');
+        micBtn.textContent = '🎤';
+      }
+    }
+
+    // --- 事件绑定 ---
+    micBtn.addEventListener('click', function() {
+      if (isProcessing) return;
+      if (isRecording) {
+        stopRecording();
+      } else {
+        startRecording();
+      }
+    });
+
+    copyBtn.addEventListener('click', function() {
+      const text = finalText.trim();
+      if (!text) { alert('没有文字可复制'); return; }
+      navigator.clipboard?.writeText(text).then(() => {
+        const orig = copyBtn.textContent;
+        copyBtn.textContent = '✅ 已复制!';
+        setTimeout(() => { copyBtn.textContent = orig; }, 1500);
+      }).catch(() => {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.cssText = 'position:fixed;left:-9999px;';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        const orig = copyBtn.textContent;
+        copyBtn.textContent = '✅ 已复制!';
+        setTimeout(() => { copyBtn.textContent = orig; }, 1500);
+      });
+    });
+
+    clearBtn.addEventListener('click', function() {
+      finalText = '';
+      updateResult();
+      setStatus('🗑️ 已清空', '');
+    });
+
+    // --- 初始化 ---
+    form.action = GAS_URL;
+    updateResult();
+    setStatus('● 点击麦克风开始说话', '');
+    updateSheetStatus('⏳ 等待识别...');
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setStatus('❌ 浏览器不支持录音', 'error');
+      micBtn.disabled = true;
+    }
+
+    if (GAS_URL.includes('你的ID')) {
+      console.warn('⚠️ 请先配置 GAS_URL');
+      updateSheetStatus('⚠️ 请先配置 GAS 地址', true);
+    }
+
+  })();
+</script>
+</body>
+</html>
